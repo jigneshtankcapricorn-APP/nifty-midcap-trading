@@ -135,7 +135,7 @@ def render_sidebar():
             st.success(f"NIFTY 50: Rs{nifty['close']:,.0f} Bullish")
         else:
             st.error(f"NIFTY 50: Rs{nifty['close']:,.0f} Bearish")
-        st.caption(f"SMA100: Rs{nifty['sma100']:,.0f} | Diff: {nifty['diff']:+,.0f}")
+        st.caption(f"SMA50: Rs{nifty['sma50']:,.0f} | Diff: {nifty['diff']:+,.0f}")
         st.divider()
         symbols = [s["symbol"] for s in STOCK_LIST]
         idx = symbols.index(st.session_state["selected_stock"]) if st.session_state["selected_stock"] in symbols else 0
