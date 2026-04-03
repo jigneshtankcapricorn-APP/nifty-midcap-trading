@@ -279,17 +279,18 @@ def page_charts():
         unsafe_allow_html=True,
     )
 
-    # Nifty Warning Banner
     nifty = check_nifty_bullish()
     st.markdown(get_nifty_warning_html(nifty), unsafe_allow_html=True)
 
-    # Controls
     col1, col2, col3 = st.columns([2, 1, 1])
     with col1:
         symbols = [s["symbol"] for s in STOCK_LIST]
-        idx = symbols.index(st.session_state["selected_stock"]) if st.session_state["selected_stock"] in symbols else 0
-        selected = st.selectbox("Select Stock", symbols, index=idx, key="chart_sel")
-        st.session_state["selected_stock"] = selected
+        current = st.session_state["selected_stock"]
+        idx = symbols.index(current) if current in symbols else 0
+        selected = st.selectbox("Select Stock", symbols, index=idx)
+        if selected != st.session_state["selected_stock"]:
+            st.session_state["selected_stock"] = selected
+            st.rerun()
     with col2:
         period = st.selectbox("Period", ["6mo", "1y", "2y", "5y"], index=1)
     with col3:
@@ -297,24 +298,30 @@ def page_charts():
 
     symbol = st.session_state["selected_stock"]
     sma_period = st.session_state["sma_period"]
+    stock_info = next((s for s in STOCK_LIST if s["symbol"] == symbol), {})
 
-    with st.spinner(f"Loading {symbol} data..."):
+    with st.spinner(f"Loading {symbol} ({stock_info.get('name', '')})..."):
         df = fetch_stock_data(symbol, period=period)
 
     if df.empty:
-        st.error(f"Could not load data for {symbol}. Try again later.")
+        st.error(f"Could not load data for {symbol}. Try again.")
         return
 
     df = compute_indicators(df, sma_period=sma_period)
 
-    # Stock info bar
     latest = df.iloc[-1]
     prev = df.iloc[-2] if len(df) > 1 else latest
     change = latest["Close"] - prev["Close"]
     pct = change / prev["Close"] * 100
 
+    # Stock name header
+    st.markdown(
+        f"**{symbol}** — {stock_info.get('name', '')} | "
+        f"Sector: {stock_info.get('sector', 'N/A')}"
+    )
+
     i1, i2, i3, i4, i5, i6 = st.columns(6)
-    i1.metric(symbol, f"Rs{latest['Close']:,.2f}", f"{change:+,.2f} ({pct:+.2f}%)")
+    i1.metric("Price", f"Rs{latest['Close']:,.2f}", f"{change:+,.2f} ({pct:+.2f}%)")
     i2.metric("Open", f"Rs{latest['Open']:,.2f}")
     i3.metric("High", f"Rs{latest['High']:,.2f}")
     i4.metric("Low", f"Rs{latest['Low']:,.2f}")
@@ -322,7 +329,6 @@ def page_charts():
     sma_val = latest.get("SMA", 0)
     i6.metric(f"SMA {sma_period}", f"Rs{sma_val:,.2f}" if not pd.isna(sma_val) else "N/A")
 
-    # Chart — NO BOXES, just lines
     fig = create_darvas_chart(
         df, symbol,
         show_signals=True,
@@ -334,7 +340,6 @@ def page_charts():
 
     st.divider()
 
-    # Signal Summary
     col_left, col_right = st.columns(2)
 
     with col_left:
@@ -372,34 +377,46 @@ def page_charts():
                 gap = ((box_top - close) / close) * 100
                 st.info(f"Price Rs{close:,.2f} is {gap:.1f}% below breakout")
 
-            st.markdown(f"**Trailing SL (50D Low):** Rs{trail_sl:,.2f}")
-            buffer_pct = ((close - trail_sl) / close) * 100 if trail_sl > 0 else 0
-            st.markdown(f"Buffer from SL: {buffer_pct:.1f}%")
+            if not pd.isna(trail_sl) and trail_sl > 0:
+                st.markdown(f"**Trailing SL (50D Low):** Rs{trail_sl:,.2f}")
+                buffer_pct = ((close - trail_sl) / close) * 100
+                st.markdown(f"Buffer from SL: {buffer_pct:.1f}%")
 
-            st.markdown(f"**SMA {sma_period}:** Rs{sma:,.2f}")
-            if close > sma:
-                st.success(f"Price ABOVE SMA {sma_period} — Uptrend")
-            else:
-                st.warning(f"Price BELOW SMA {sma_period} — Downtrend")
+            if not pd.isna(sma):
+                st.markdown(f"**SMA {sma_period}:** Rs{sma:,.2f}")
+                if close > sma:
+                    st.success(f"Price ABOVE SMA {sma_period} — Uptrend")
+                else:
+                    st.warning(f"Price BELOW SMA {sma_period} — Downtrend")
 
             st.markdown(f"**Hard SL (if buy today):** Rs{close * 0.94:,.2f} (-6%)")
         else:
             st.info("Not enough data for levels")
 
-    # Quick stock navigation
+    # Quick Navigation — FIXED to properly load chart
     st.divider()
-    st.markdown("#### Quick Navigation")
-    sector_filter = st.selectbox("Filter by Sector", ["All"] + SECTORS)
+    st.markdown("#### Quick Navigation — Click any stock to load chart")
+    sector_filter = st.selectbox("Filter by Sector", ["All"] + SECTORS, key="sector_nav")
     display_stocks = STOCK_LIST
     if sector_filter != "All":
         display_stocks = [s for s in STOCK_LIST if s["sector"] == sector_filter]
+
+    # Show current selected stock highlighted
+    st.caption(f"Currently viewing: **{symbol}**")
+
     cols = st.columns(8)
     for j, stk in enumerate(display_stocks):
         with cols[j % 8]:
-            if st.button(stk["symbol"], key=f"nav_{stk['symbol']}", use_container_width=True):
+            # Highlight current stock
+            btn_type = "primary" if stk["symbol"] == symbol else "secondary"
+            if st.button(
+                stk["symbol"],
+                key=f"nav_{stk['symbol']}",
+                use_container_width=True,
+                type=btn_type,
+            ):
                 st.session_state["selected_stock"] = stk["symbol"]
                 st.rerun()
-
 
 def page_scanner():
     st.markdown(
