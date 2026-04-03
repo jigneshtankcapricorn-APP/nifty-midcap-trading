@@ -1,5 +1,6 @@
 """
-Data + Indicators — matches backtest, supports SMA 50/100 selector
+Data + Indicators — matches backtest exactly
+Handles special characters in symbols like GVT&D and M&MFIN
 """
 
 import yfinance as yf
@@ -11,8 +12,13 @@ import streamlit as st
 @st.cache_data(ttl=900, show_spinner=False)
 def fetch_stock_data(symbol: str, period: str = "1y") -> pd.DataFrame:
     try:
-        ticker = yf.Ticker(f"{symbol}.NS")
+        yahoo_symbol = symbol + ".NS"
+        ticker = yf.Ticker(yahoo_symbol)
         df = ticker.history(period=period, interval="1d")
+        if df.empty:
+            clean_symbol = symbol.replace("&", "").replace("-", "") + ".NS"
+            ticker = yf.Ticker(clean_symbol)
+            df = ticker.history(period=period, interval="1d")
         if df.empty:
             return pd.DataFrame()
         df = df[["Open", "High", "Low", "Close", "Volume"]].copy()
@@ -50,36 +56,28 @@ def compute_indicators(df: pd.DataFrame, sma_period: int = 50) -> pd.DataFrame:
 
     df = df.copy()
 
-    # Box Top = 50D High excluding today
     df["Box_Top"] = df["High"].rolling(window=50, min_periods=10).max().shift(1)
 
-    # Trailing SL = 50D Low excluding today
     df["Trailing_SL"] = df["Low"].rolling(window=50, min_periods=10).min().shift(1)
 
-    # SMA (user selectable: 50 or 100)
     df["SMA"] = df["Close"].rolling(window=sma_period, min_periods=min(20, sma_period)).mean()
 
-    # 20D Volume Average
     df["Vol_SMA_20"] = df["Volume"].rolling(window=20, min_periods=5).mean()
 
-    # Volume Ratio
     df["Vol_Ratio"] = np.where(
         df["Vol_SMA_20"] > 0,
         df["Volume"] / df["Vol_SMA_20"],
         0
     )
 
-    # BUY = Close > Box_Top AND Close > SMA AND Volume > 1.5x
     df["Buy_Signal"] = (
         (df["Close"] > df["Box_Top"]) &
         (df["Close"] > df["SMA"]) &
         (df["Volume"] > 1.5 * df["Vol_SMA_20"])
     )
 
-    # EXIT = Low touches Trailing SL
     df["Sell_Signal"] = df["Low"] <= df["Trailing_SL"]
 
-    # Hard SL for display
     df["Hard_SL"] = np.where(df["Buy_Signal"], df["Close"] * 0.94, np.nan)
 
     return df
@@ -113,16 +111,28 @@ def scan_stock(symbol: str, sma_period: int = 50):
     if pd.isna(latest.get("Box_Top")) or pd.isna(latest.get("SMA")):
         return None
 
+    trail_sl = latest.get("Trailing_SL", 0)
+    if pd.isna(trail_sl):
+        trail_sl = 0
+
+    vol_sma = latest.get("Vol_SMA_20", 0)
+    if pd.isna(vol_sma):
+        vol_sma = 0
+
+    box_top = latest.get("Box_Top", 0)
+    if pd.isna(box_top):
+        box_top = 0
+
     return {
         "symbol": symbol,
         "close": round(latest["Close"], 2),
         "sma": round(latest["SMA"], 2),
-        "high_50d": round(latest["Box_Top"], 2),
-        "low_50d": round(latest["Trailing_SL"], 2) if not pd.isna(latest.get("Trailing_SL")) else 0,
+        "high_50d": round(box_top, 2),
+        "low_50d": round(trail_sl, 2),
         "volume": int(latest["Volume"]),
-        "avg_vol": int(latest["Vol_SMA_20"]) if not pd.isna(latest.get("Vol_SMA_20")) else 0,
+        "avg_vol": int(vol_sma),
         "vol_ratio": round(latest["Vol_Ratio"], 2),
         "buy_signal": bool(latest["Buy_Signal"]),
-        "above_sma": latest["Close"] > latest["SMA"],
-        "breakout": latest["Close"] > latest["Box_Top"] if not pd.isna(latest.get("Box_Top")) else False,
+        "above_sma": bool(latest["Close"] > latest["SMA"]),
+        "breakout": bool(latest["Close"] > box_top) if box_top > 0 else False,
     }
