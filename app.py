@@ -18,7 +18,6 @@ from utils.data import (
 )
 from utils.charts import create_darvas_chart
 
-# ═══════════════ PAGE CONFIG ═══════════════
 st.set_page_config(
     page_title="Midcap 150 Darvas Box Trading",
     page_icon="📈",
@@ -27,7 +26,6 @@ st.set_page_config(
 )
 
 
-# ═══════════════ CUSTOM CSS ═══════════════
 def inject_css():
     css = """
     <style>
@@ -62,14 +60,6 @@ def inject_css():
         margin: 4px 0 0 0;
         font-size: 0.9rem;
     }
-    .login-container {
-        max-width: 400px;
-        margin: 0 auto;
-        padding: 40px;
-        background: #1a1f2e;
-        border-radius: 16px;
-        border: 1px solid #333;
-    }
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     </style>
@@ -77,7 +67,6 @@ def inject_css():
     st.markdown(css, unsafe_allow_html=True)
 
 
-# ═══════════════ SESSION STATE ═══════════════
 def init_state():
     defaults = {
         "logged_in": False,
@@ -86,261 +75,198 @@ def init_state():
         "trade_log": [],
         "signals_log": [],
         "page": "Dashboard",
+        "last_scan": [],
     }
     for k, v in defaults.items():
         if k not in st.session_state:
             st.session_state[k] = v
 
 
-# ═══════════════ LOGIN PAGE ═══════════════
 def login_page():
     st.markdown("")
     st.markdown("")
-
     col1, col2, col3 = st.columns([1, 1.5, 1])
-
     with col2:
         st.markdown(
             "<div style='text-align:center;'>"
             "<h1 style='color:#4FC3F7;'>📈 Midcap 150</h1>"
             "<h3 style='color:#90CAF9;'>Darvas Box Trading System</h3>"
-            "<p style='color:#78909C;'>Enter your credentials to continue</p>"
+            "<p style='color:#78909C;'>Enter credentials to continue</p>"
             "</div>",
             unsafe_allow_html=True,
         )
-
         st.markdown("")
-
         username = st.text_input("Username", placeholder="Enter username", key="login_user")
-        password = st.text_input(
-            "Password", type="password", placeholder="Enter password", key="login_pass"
-        )
-
+        password = st.text_input("Password", type="password", placeholder="Enter password", key="login_pass")
         st.markdown("")
-
-        if st.button("🔓 Login", use_container_width=True, type="primary"):
+        if st.button("Login", use_container_width=True, type="primary"):
             try:
                 valid_user = st.secrets["credentials"]["username"]
                 valid_pwd = st.secrets["credentials"]["password"]
             except Exception:
                 valid_user = "admin"
                 valid_pwd = "admin"
-
             if username == valid_user and password == valid_pwd:
                 st.session_state["logged_in"] = True
                 st.rerun()
             else:
-                st.error("❌ Invalid username or password")
-
-        st.markdown("")
-        st.caption("Default: admin / admin (if secrets not configured)")
+                st.error("Invalid username or password")
+        st.caption("Default: admin / admin (if secrets not set)")
 
 
-# ═══════════════ SIDEBAR ═══════════════
 def render_sidebar():
     with st.sidebar:
         st.markdown(
             "<div style='text-align:center; padding:10px 0 20px;'>"
             "<h2 style='color:#4FC3F7; margin:0;'>📈 Darvas Box</h2>"
-            "<p style='color:#78909C; font-size:0.8rem; margin:0;'>"
-            "Midcap 150 Trading System</p></div>",
+            "<p style='color:#78909C; font-size:0.8rem; margin:0;'>Midcap 150 Trading</p>"
+            "</div>",
             unsafe_allow_html=True,
         )
-
         st.divider()
-
-        pages = [
-            "Dashboard",
-            "Charts",
-            "Stock Scanner",
-            "Portfolio",
-            "Signals Log",
-            "Trade Log",
-            "Settings",
-        ]
-
+        pages = ["Dashboard", "Charts", "Stock Scanner", "Portfolio", "Signals Log", "Trade Log", "Settings"]
         icons = ["📊", "📈", "🔍", "💼", "📋", "📜", "⚙️"]
-
         for i, page in enumerate(pages):
-            label = f"{icons[i]} {page}"
-            if st.button(label, use_container_width=True, key=f"nav_{page}"):
+            if st.button(f"{icons[i]} {page}", use_container_width=True, key=f"nav_{page}"):
                 st.session_state["page"] = page
-
         st.divider()
-
-        # Nifty status
         nifty = check_nifty_bullish()
         if nifty["bullish"]:
-            st.success(f"NIFTY 50: ₹{nifty['close']:,.0f} ↑ Bullish")
+            st.success(f"NIFTY 50: Rs{nifty['close']:,.0f} Bullish")
         else:
-            st.error(f"NIFTY 50: ₹{nifty['close']:,.0f} ↓ Bearish")
-        st.caption(f"SMA50: ₹{nifty['sma50']:,.0f} | Diff: {nifty['diff']:+,.0f}")
-
+            st.error(f"NIFTY 50: Rs{nifty['close']:,.0f} Bearish")
+        st.caption(f"SMA50: Rs{nifty['sma50']:,.0f} | Diff: {nifty['diff']:+,.0f}")
         st.divider()
-
-        # Quick stock selector
         symbols = [s["symbol"] for s in STOCK_LIST]
-        idx = (
-            symbols.index(st.session_state["selected_stock"])
-            if st.session_state["selected_stock"] in symbols
-            else 0
-        )
-        chosen = st.selectbox("🔎 Quick Stock Select", symbols, index=idx)
+        idx = symbols.index(st.session_state["selected_stock"]) if st.session_state["selected_stock"] in symbols else 0
+        chosen = st.selectbox("Quick Stock Select", symbols, index=idx)
         if chosen != st.session_state["selected_stock"]:
             st.session_state["selected_stock"] = chosen
-
-        if st.button("📈 View Chart", use_container_width=True, type="primary"):
+        if st.button("View Chart", use_container_width=True, type="primary"):
             st.session_state["page"] = "Charts"
             st.rerun()
-
         st.divider()
-
-        if st.button("🚪 Logout", use_container_width=True):
+        if st.button("Logout", use_container_width=True):
             st.session_state["logged_in"] = False
             st.rerun()
 
 
-# ═══════════════ PAGE: DASHBOARD ═══════════════
 def page_dashboard():
     st.markdown(
-        "<div class='header-bar'>"
-        "<h1>📊 Dashboard</h1>"
-        "<p>Nifty Midcap 150 — Darvas Box Automatic Trading System</p>"
-        "</div>",
+        "<div class='header-bar'><h1>📊 Dashboard</h1>"
+        "<p>Nifty Midcap 150 Darvas Box Trading System</p></div>",
         unsafe_allow_html=True,
     )
-
     try:
         capital = st.secrets["trading"]["capital"]
         max_legs = st.secrets["trading"]["max_legs"]
         per_leg = st.secrets["trading"]["per_leg_pct"]
         hard_sl = st.secrets["trading"]["hard_sl_pct"]
     except Exception:
-        capital, max_legs, per_leg, hard_sl = 200000, 5, 0.20, 0.06
+        capital = 200000
+        max_legs = 5
+        per_leg = 0.20
+        hard_sl = 0.06
 
-    st.subheader("⚡ System Status")
+    st.subheader("System Status")
     c1, c2, c3, c4, c5 = st.columns(5)
-    c1.metric("Capital", f"₹{capital:,.0f}")
-    c2.metric("Per Leg", f"₹{capital * per_leg:,.0f}")
+    c1.metric("Capital", f"Rs{capital:,.0f}")
+    c2.metric("Per Leg", f"Rs{capital * per_leg:,.0f}")
     c3.metric("Max Legs", max_legs)
     c4.metric("Hard SL", f"{hard_sl * 100:.0f}%")
-
     nifty = check_nifty_bullish()
-    c5.metric("Nifty Trend", "BULLISH ✅" if nifty["bullish"] else "BEARISH ⛔")
+    c5.metric("Nifty Trend", "BULLISH" if nifty["bullish"] else "BEARISH")
 
     st.divider()
-
-    st.subheader("💼 Portfolio Summary")
+    st.subheader("Portfolio Summary")
     portfolio = st.session_state.get("portfolio", [])
     active = [p for p in portfolio if p.get("status") == "ACTIVE"]
-
     total_invested = sum(p.get("invested", 0) for p in active)
     total_current = sum(p.get("current_value", 0) for p in active)
     total_pnl = total_current - total_invested
-
     p1, p2, p3, p4 = st.columns(4)
     p1.metric("Active Positions", f"{len(active)} / {max_legs}")
-    p2.metric("Total Invested", f"₹{total_invested:,.0f}")
-    p3.metric("Current Value", f"₹{total_current:,.0f}")
+    p2.metric("Total Invested", f"Rs{total_invested:,.0f}")
+    p3.metric("Current Value", f"Rs{total_current:,.0f}")
     pnl_delta = f"{(total_pnl / total_invested * 100):.1f}%" if total_invested else "0%"
-    p4.metric("Unrealized P&L", f"₹{total_pnl:,.0f}", delta=pnl_delta)
+    p4.metric("Unrealized PnL", f"Rs{total_pnl:,.0f}", delta=pnl_delta)
 
     st.divider()
-
-    st.subheader("📊 Trade Statistics")
+    st.subheader("Trade Statistics")
     log = st.session_state.get("trade_log", [])
     wins = [t for t in log if t.get("pnl", 0) > 0]
     losses = [t for t in log if t.get("pnl", 0) <= 0]
-
     t1, t2, t3, t4 = st.columns(4)
     t1.metric("Total Trades", len(log))
     t2.metric("Winners", len(wins))
     t3.metric("Losers", len(losses))
-    wr = f"{len(wins) / len(log) * 100:.0f}%" if log else "N/A"
-    t4.metric("Win Rate", wr)
+    t4.metric("Win Rate", f"{len(wins) / len(log) * 100:.0f}%" if log else "N/A")
 
     st.divider()
-
-    st.subheader("🚀 Quick Actions")
+    st.subheader("Quick Actions")
     qa1, qa2, qa3 = st.columns(3)
     with qa1:
-        if st.button("🔍 Run Stock Scanner", use_container_width=True, type="primary"):
+        if st.button("Run Stock Scanner", use_container_width=True, type="primary"):
             st.session_state["page"] = "Stock Scanner"
             st.rerun()
     with qa2:
-        if st.button("📈 Open Charts", use_container_width=True):
+        if st.button("Open Charts", use_container_width=True):
             st.session_state["page"] = "Charts"
             st.rerun()
     with qa3:
-        if st.button("💼 View Portfolio", use_container_width=True):
+        if st.button("View Portfolio", use_container_width=True):
             st.session_state["page"] = "Portfolio"
             st.rerun()
 
 
-# ═══════════════ PAGE: CHARTS ═══════════════
 def page_charts():
     st.markdown(
-        "<div class='header-bar'>"
-        "<h1>📈 Darvas Box Chart</h1>"
-        "<p>Interactive chart with Darvas Box, signals, and SL levels</p>"
-        "</div>",
+        "<div class='header-bar'><h1>📈 Darvas Box Chart</h1>"
+        "<p>Interactive chart with Darvas Box, signals, and SL levels</p></div>",
         unsafe_allow_html=True,
     )
 
     col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
-
     with col1:
         symbols = [s["symbol"] for s in STOCK_LIST]
-        idx = (
-            symbols.index(st.session_state["selected_stock"])
-            if st.session_state["selected_stock"] in symbols
-            else 0
-        )
+        idx = symbols.index(st.session_state["selected_stock"]) if st.session_state["selected_stock"] in symbols else 0
         selected = st.selectbox("Select Stock", symbols, index=idx, key="chart_sel")
         st.session_state["selected_stock"] = selected
-
     with col2:
         period = st.selectbox("Period", ["6mo", "1y", "2y", "5y"], index=1)
-
     with col3:
         show_boxes = st.checkbox("Darvas Boxes", value=True)
-
     with col4:
         show_bands = st.checkbox("50D Bands", value=True)
 
     symbol = st.session_state["selected_stock"]
-    stock_info = next((s for s in STOCK_LIST if s["symbol"] == symbol), {})
 
     with st.spinner(f"Loading {symbol} data..."):
         df = fetch_stock_data(symbol, period=period)
 
     if df.empty:
-        st.error(f"❌ Could not load data for {symbol}. Try again later.")
+        st.error(f"Could not load data for {symbol}. Try again later.")
         return
 
     df = compute_indicators(df)
     boxes = find_darvas_boxes(df) if show_boxes else []
 
-    # Stock info bar
     latest = df.iloc[-1]
     prev = df.iloc[-2] if len(df) > 1 else latest
     change = latest["Close"] - prev["Close"]
     pct = change / prev["Close"] * 100
 
     i1, i2, i3, i4, i5, i6 = st.columns(6)
-    i1.metric(symbol, f"₹{latest['Close']:,.2f}", f"{change:+,.2f} ({pct:+.2f}%)")
-    i2.metric("Open", f"₹{latest['Open']:,.2f}")
-    i3.metric("High", f"₹{latest['High']:,.2f}")
-    i4.metric("Low", f"₹{latest['Low']:,.2f}")
+    i1.metric(symbol, f"Rs{latest['Close']:,.2f}", f"{change:+,.2f} ({pct:+.2f}%)")
+    i2.metric("Open", f"Rs{latest['Open']:,.2f}")
+    i3.metric("High", f"Rs{latest['High']:,.2f}")
+    i4.metric("Low", f"Rs{latest['Low']:,.2f}")
     i5.metric("Volume", f"{latest['Volume']:,.0f}")
     sma_val = latest.get("SMA50", 0)
-    i6.metric("SMA 50", f"₹{sma_val:,.2f}" if not pd.isna(sma_val) else "N/A")
+    i6.metric("SMA 50", f"Rs{sma_val:,.2f}" if not pd.isna(sma_val) else "N/A")
 
-    # Chart
     fig = create_darvas_chart(
-        df,
-        symbol,
-        boxes,
+        df, symbol, boxes,
         show_signals=True,
         show_darvas_bands=show_bands,
         show_traditional_boxes=show_boxes,
@@ -349,66 +275,59 @@ def page_charts():
 
     st.divider()
 
-    # Signal Summary
-    sc1, sc2 = st.columns(2)
+    col_left, col_right = st.columns(2)
 
-    with sc1:
-        st.markdown("#### 🟢 Buy Signals (Last 30 Days)")
+    with col_left:
+        st.markdown("#### Buy Signals (Last 30 Days)")
         recent = df.tail(30)
         if "Buy_Signal" in recent.columns:
             buy_days = recent[recent["Buy_Signal"] == True]
             if buy_days.empty:
                 st.info("No buy signals in last 30 days")
             else:
-                for idx_date, row in buy_days.iterrows():
+                for dt, row in buy_days.iterrows():
                     sl = row["Close"] * 0.94
                     st.markdown(
-                        f"**{idx_date.strftime('%d-%b-%Y')}** — "
-                        f"₹{row['Close']:,.2f} | "
-                        f"Vol: {row['Vol_Ratio']:.1f}× | "
-                        f"SL: ₹{sl:,.2f}"
+                        f"**{dt.strftime('%d-%b-%Y')}** - "
+                        f"Rs{row['Close']:,.2f} | "
+                        f"Vol: {row['Vol_Ratio']:.1f}x | "
+                        f"SL: Rs{sl:,.2f}"
                     )
         else:
             st.info("No signal data available")
 
-      with sc2:
-        st.markdown("#### 📦 Darvas Boxes Found")
+    with col_right:
+        st.markdown("#### Darvas Boxes Found")
         if not boxes:
             st.info("No Darvas Boxes detected in this period")
         else:
             for i, bx in enumerate(boxes[-8:], 1):
                 if bx["breakout"] is True:
-                    status = "🟢 Breakout"
+                    status = "Breakout"
                 elif bx["breakout"] is False:
-                    status = "🔴 Breakdown"
+                    status = "Breakdown"
                 else:
-                    status = "🟡 Active (waiting)"
-
+                    status = "Active"
                 candles = bx.get("candles", 0)
                 height_pct = bx.get("height_pct", 0)
                 bp = bx.get("breakout_price")
-                bp_text = f" @ ₹{bp:,.0f}" if bp else ""
-
+                bp_text = f" @ Rs{bp:,.0f}" if bp else ""
                 st.markdown(
                     f"**Box {i}**: "
-                    f"{bx['start'].strftime('%d-%b')} → {bx['end'].strftime('%d-%b')} | "
-                    f"Top: ₹{bx['top']:,.0f} | "
-                    f"Bot: ₹{bx['bottom']:,.0f} | "
+                    f"{bx['start'].strftime('%d-%b')} to {bx['end'].strftime('%d-%b')} | "
+                    f"Top: Rs{bx['top']:,.0f} | "
+                    f"Bot: Rs{bx['bottom']:,.0f} | "
                     f"Range: {height_pct:.1f}% | "
                     f"{candles} days | "
                     f"{status}{bp_text}"
                 )
 
-    # Quick stock navigation
     st.divider()
-    st.markdown("#### 🏷️ Quick Navigation")
-
+    st.markdown("#### Quick Navigation")
     sector_filter = st.selectbox("Filter by Sector", ["All"] + SECTORS)
-
     display_stocks = STOCK_LIST
     if sector_filter != "All":
         display_stocks = [s for s in STOCK_LIST if s["sector"] == sector_filter]
-
     cols = st.columns(8)
     for j, stk in enumerate(display_stocks):
         with cols[j % 8]:
@@ -417,13 +336,10 @@ def page_charts():
                 st.rerun()
 
 
-# ═══════════════ PAGE: SCANNER ═══════════════
 def page_scanner():
     st.markdown(
-        "<div class='header-bar'>"
-        "<h1>🔍 Stock Scanner</h1>"
-        "<p>Scan all Nifty Midcap 150 stocks for Darvas Box breakout signals</p>"
-        "</div>",
+        "<div class='header-bar'><h1>🔍 Stock Scanner</h1>"
+        "<p>Scan Nifty Midcap 150 for Darvas Box breakout signals</p></div>",
         unsafe_allow_html=True,
     )
 
@@ -431,13 +347,9 @@ def page_scanner():
     with col1:
         filter_sector = st.multiselect("Filter by Sector", SECTORS, default=[])
     with col2:
-        filter_type = st.radio(
-            "Show",
-            ["All", "Buy Signals Only", "Above SMA50", "Breakout"],
-            horizontal=True,
-        )
+        filter_type = st.radio("Show", ["All", "Buy Signals Only", "Above SMA50", "Breakout"], horizontal=True)
 
-    if st.button("🔄 Run Full Scan", type="primary"):
+    if st.button("Run Full Scan", type="primary"):
         filtered = STOCK_LIST
         if filter_sector:
             filtered = [s for s in filtered if s["sector"] in filter_sector]
@@ -449,7 +361,6 @@ def page_scanner():
         for i, stock in enumerate(filtered):
             status_text.text(f"Scanning {stock['symbol']} ({i + 1}/{len(filtered)})...")
             progress.progress((i + 1) / len(filtered))
-
             result = scan_stock(stock["symbol"])
             if result:
                 result["name"] = stock["name"]
@@ -465,7 +376,6 @@ def page_scanner():
 
         df_results = pd.DataFrame(results)
 
-        # Apply filters
         if filter_type == "Buy Signals Only":
             df_results = df_results[df_results["buy_signal"] == True]
         elif filter_type == "Above SMA50":
@@ -474,16 +384,11 @@ def page_scanner():
             df_results = df_results[df_results["breakout"] == True]
 
         st.divider()
-
-        # Summary
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("Stocks Scanned", len(results))
-        buy_count = int(df_results["buy_signal"].sum()) if len(df_results) > 0 else 0
-        sma_count = int(df_results["above_sma"].sum()) if len(df_results) > 0 else 0
-        brk_count = int(df_results["breakout"].sum()) if len(df_results) > 0 else 0
-        m2.metric("Buy Signals", buy_count)
-        m3.metric("Above SMA50", sma_count)
-        m4.metric("Breakouts", brk_count)
+        m2.metric("Buy Signals", int(df_results["buy_signal"].sum()) if len(df_results) > 0 else 0)
+        m3.metric("Above SMA50", int(df_results["above_sma"].sum()) if len(df_results) > 0 else 0)
+        m4.metric("Breakouts", int(df_results["breakout"].sum()) if len(df_results) > 0 else 0)
 
         st.divider()
 
@@ -491,53 +396,33 @@ def page_scanner():
             st.info("No stocks match the filter criteria.")
             return
 
-        # Sort by buy signals first then volume
-        df_results = df_results.sort_values(
-            ["buy_signal", "vol_ratio"], ascending=[False, False]
-        )
+        df_results = df_results.sort_values(["buy_signal", "vol_ratio"], ascending=[False, False])
 
-        # Display table
         st.dataframe(
-            df_results[
-                [
-                    "symbol", "name", "sector", "close", "sma50",
-                    "high_50d", "low_50d", "vol_ratio", "buy_signal",
-                    "above_sma", "breakout",
-                ]
-            ],
+            df_results[["symbol", "name", "sector", "close", "sma50", "high_50d", "low_50d", "vol_ratio", "buy_signal", "above_sma", "breakout"]],
             use_container_width=True,
             height=600,
         )
 
-        # Buy signal stocks
         buy_stocks = df_results[df_results["buy_signal"] == True]
         if not buy_stocks.empty:
             st.divider()
-            st.success(f"🟢 {len(buy_stocks)} BUY SIGNAL(S) FOUND!")
-
-            cols = st.columns(min(5, len(buy_stocks)))
+            st.success(f"{len(buy_stocks)} BUY SIGNAL(S) FOUND!")
+            btn_cols = st.columns(min(5, len(buy_stocks)))
             for j, (_, row) in enumerate(buy_stocks.iterrows()):
-                with cols[j % len(cols)]:
-                    if st.button(
-                        f"📈 {row['symbol']}\n₹{row['close']:,.0f}",
-                        key=f"scan_{row['symbol']}",
-                        use_container_width=True,
-                    ):
+                with btn_cols[j % len(btn_cols)]:
+                    if st.button(f"{row['symbol']} Rs{row['close']:,.0f}", key=f"scan_{row['symbol']}", use_container_width=True):
                         st.session_state["selected_stock"] = row["symbol"]
                         st.session_state["page"] = "Charts"
                         st.rerun()
 
-        # Save to session
         st.session_state["last_scan"] = df_results.to_dict("records")
 
 
-# ═══════════════ PAGE: PORTFOLIO ═══════════════
 def page_portfolio():
     st.markdown(
-        "<div class='header-bar'>"
-        "<h1>💼 Portfolio</h1>"
-        "<p>Manage positions, track P&L, and monitor stop-losses</p>"
-        "</div>",
+        "<div class='header-bar'><h1>💼 Portfolio</h1>"
+        "<p>Manage positions, track PnL, and monitor stop-losses</p></div>",
         unsafe_allow_html=True,
     )
 
@@ -545,26 +430,23 @@ def page_portfolio():
         capital = st.secrets["trading"]["capital"]
         max_legs = st.secrets["trading"]["max_legs"]
     except Exception:
-        capital, max_legs = 200000, 5
+        capital = 200000
+        max_legs = 5
 
     per_leg = capital * 0.20
     portfolio = st.session_state.get("portfolio", [])
     active = [p for p in portfolio if p.get("status") == "ACTIVE"]
 
-    # Add Position
-    st.subheader("➕ Add New Position")
-
+    st.subheader("Add New Position")
     ac1, ac2, ac3 = st.columns(3)
     with ac1:
         add_symbol = st.selectbox("Stock", [s["symbol"] for s in STOCK_LIST], key="add_sym")
     with ac2:
-        add_price = st.number_input("Entry Price (₹)", min_value=1.0, value=100.0, step=0.5)
+        add_price = st.number_input("Entry Price", min_value=1.0, value=100.0, step=0.5)
     with ac3:
-        add_qty = st.number_input(
-            "Quantity", min_value=1, value=int(per_leg / max(add_price, 1))
-        )
+        add_qty = st.number_input("Quantity", min_value=1, value=int(per_leg / max(add_price, 1)))
 
-    if st.button("✅ Add to Portfolio", type="primary"):
+    if st.button("Add to Portfolio", type="primary"):
         if len(active) >= max_legs:
             st.error(f"Max {max_legs} legs reached!")
         else:
@@ -585,18 +467,15 @@ def page_portfolio():
                 "days_held": 0,
             }
             st.session_state["portfolio"].append(new_pos)
-            st.success(f"✅ Added {add_symbol} @ ₹{add_price}")
+            st.success(f"Added {add_symbol} @ Rs{add_price}")
             st.rerun()
 
     st.divider()
-
-    # Active Positions
-    st.subheader(f"📊 Active Positions ({len(active)} / {max_legs})")
+    st.subheader(f"Active Positions ({len(active)} / {max_legs})")
 
     if not active:
         st.info("No active positions. Add one above or run the scanner.")
     else:
-        # Update current prices
         for pos in active:
             try:
                 df_temp = fetch_stock_data(pos["symbol"], period="5d")
@@ -605,24 +484,15 @@ def page_portfolio():
                     pos["current_price"] = round(curr, 2)
                     pos["current_value"] = round(curr * pos["quantity"], 2)
                     pos["pnl"] = round(pos["current_value"] - pos["invested"], 2)
-                    pos["pnl_pct"] = round(
-                        (pos["current_price"] - pos["entry_price"])
-                        / pos["entry_price"]
-                        * 100,
-                        2,
-                    )
+                    pos["pnl_pct"] = round((pos["current_price"] - pos["entry_price"]) / pos["entry_price"] * 100, 2)
                     entry_dt = datetime.strptime(pos["entry_date"], "%Y-%m-%d")
                     pos["days_held"] = (datetime.now() - entry_dt).days
-
-                    # Update trailing SL
                     df_full = fetch_stock_data(pos["symbol"], period="6mo")
                     if not df_full.empty and len(df_full) >= 50:
                         low_50d = df_full["Low"].rolling(50).min().iloc[-1]
                         new_tsl = max(pos["trailing_sl"], low_50d)
                         pos["trailing_sl"] = round(new_tsl, 2)
-                        pos["active_sl"] = round(
-                            max(pos["hard_sl"], pos["trailing_sl"]), 2
-                        )
+                        pos["active_sl"] = round(max(pos["hard_sl"], pos["trailing_sl"]), 2)
             except Exception:
                 pass
 
@@ -635,125 +505,91 @@ def page_portfolio():
         available_cols = [c for c in display_cols if c in df_port.columns]
         st.dataframe(df_port[available_cols], use_container_width=True)
 
-        # Exit position
         st.divider()
-        st.subheader("🚪 Exit Position")
-
+        st.subheader("Exit Position")
         exit_symbols = [p["symbol"] for p in active]
         exit_choice = st.selectbox("Select stock to exit", exit_symbols)
-
         ec1, ec2 = st.columns(2)
         with ec1:
-            exit_price = st.number_input("Exit Price (₹)", min_value=0.01, value=100.0)
+            exit_price = st.number_input("Exit Price", min_value=0.01, value=100.0)
         with ec2:
             exit_reason = st.text_input("Reason", "Manual Exit")
 
-        if st.button("🔴 Execute Exit", type="primary"):
+        if st.button("Execute Exit", type="primary"):
             for p in st.session_state["portfolio"]:
                 if p["symbol"] == exit_choice and p["status"] == "ACTIVE":
                     p["status"] = "EXITED"
                     exit_val = exit_price * p["quantity"]
                     pnl = exit_val - p["invested"]
-
-                    st.session_state["trade_log"].append(
-                        {
-                            "symbol": exit_choice,
-                            "entry_date": p["entry_date"],
-                            "entry_price": p["entry_price"],
-                            "exit_date": datetime.now().strftime("%Y-%m-%d"),
-                            "exit_price": exit_price,
-                            "quantity": p["quantity"],
-                            "invested": p["invested"],
-                            "exit_value": round(exit_val, 2),
-                            "pnl": round(pnl, 2),
-                            "pnl_pct": round(
-                                (exit_price - p["entry_price"])
-                                / p["entry_price"]
-                                * 100,
-                                2,
-                            ),
-                            "days_held": p.get("days_held", 0),
-                            "exit_reason": exit_reason,
-                        }
-                    )
-                    st.success(f"Exited {exit_choice} @ ₹{exit_price} | P&L: ₹{pnl:,.2f}")
+                    st.session_state["trade_log"].append({
+                        "symbol": exit_choice,
+                        "entry_date": p["entry_date"],
+                        "entry_price": p["entry_price"],
+                        "exit_date": datetime.now().strftime("%Y-%m-%d"),
+                        "exit_price": exit_price,
+                        "quantity": p["quantity"],
+                        "invested": p["invested"],
+                        "exit_value": round(exit_val, 2),
+                        "pnl": round(pnl, 2),
+                        "pnl_pct": round((exit_price - p["entry_price"]) / p["entry_price"] * 100, 2),
+                        "days_held": p.get("days_held", 0),
+                        "exit_reason": exit_reason,
+                    })
+                    st.success(f"Exited {exit_choice} @ Rs{exit_price} | PnL: Rs{pnl:,.2f}")
                     break
             st.rerun()
 
 
-# ═══════════════ PAGE: SIGNALS LOG ═══════════════
 def page_signals():
     st.markdown(
-        "<div class='header-bar'>"
-        "<h1>📋 Signals Log</h1>"
-        "<p>History of all buy/exit signals detected</p>"
-        "</div>",
+        "<div class='header-bar'><h1>📋 Signals Log</h1>"
+        "<p>History of all signals detected</p></div>",
         unsafe_allow_html=True,
     )
-
     last_scan = st.session_state.get("last_scan", [])
     if last_scan:
         buy_signals = [s for s in last_scan if s.get("buy_signal")]
         if buy_signals:
-            st.subheader(f"🟢 Buy Signals from Last Scan ({len(buy_signals)})")
-            df = pd.DataFrame(buy_signals)
-            st.dataframe(
-                df[["symbol", "close", "vol_ratio", "high_50d", "low_50d", "sector"]],
-                use_container_width=True,
-            )
+            st.subheader(f"Buy Signals from Last Scan ({len(buy_signals)})")
+            st.dataframe(pd.DataFrame(buy_signals)[["symbol", "close", "vol_ratio", "high_50d", "low_50d", "sector"]], use_container_width=True)
         else:
             st.info("No buy signals in last scan.")
-
         st.divider()
-        st.subheader("📊 All Scanned Stocks")
-        df_all = pd.DataFrame(last_scan)
-        st.dataframe(df_all, use_container_width=True, height=400)
+        st.subheader("All Scanned Stocks")
+        st.dataframe(pd.DataFrame(last_scan), use_container_width=True, height=400)
     else:
-        st.info("No signals recorded yet. Run the Stock Scanner first.")
+        st.info("No signals yet. Run the Stock Scanner first.")
 
 
-# ═══════════════ PAGE: TRADE LOG ═══════════════
 def page_tradelog():
     st.markdown(
-        "<div class='header-bar'>"
-        "<h1>📜 Trade Log</h1>"
-        "<p>Complete history of executed trades</p>"
-        "</div>",
+        "<div class='header-bar'><h1>📜 Trade Log</h1>"
+        "<p>Complete history of executed trades</p></div>",
         unsafe_allow_html=True,
     )
-
     log = st.session_state.get("trade_log", [])
     if not log:
         st.info("No trades recorded yet.")
         return
-
     df = pd.DataFrame(log)
-
     total_pnl = df["pnl"].sum()
     wins = df[df["pnl"] > 0]
     losses = df[df["pnl"] <= 0]
-
     m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Total P&L", f"₹{total_pnl:,.0f}")
+    m1.metric("Total PnL", f"Rs{total_pnl:,.0f}")
     m2.metric("Winners", len(wins))
     m3.metric("Losers", len(losses))
-    wr = f"{len(wins) / len(df) * 100:.0f}%" if len(df) else "N/A"
-    m4.metric("Win Rate", wr)
-
+    m4.metric("Win Rate", f"{len(wins) / len(df) * 100:.0f}%" if len(df) else "N/A")
     st.divider()
     st.dataframe(df, use_container_width=True, height=500)
 
 
-# ═══════════════ PAGE: SETTINGS ═══════════════
 def page_settings():
     st.markdown(
-        "<div class='header-bar'>"
-        "<h1>⚙️ Settings</h1>"
-        "<p>Trading system configuration</p>"
-        "</div>",
+        "<div class='header-bar'><h1>⚙️ Settings</h1>"
+        "<p>Trading system configuration</p></div>",
         unsafe_allow_html=True,
     )
-
     try:
         capital = st.secrets["trading"]["capital"]
         max_legs = st.secrets["trading"]["max_legs"]
@@ -761,55 +597,35 @@ def page_settings():
         hard_sl = st.secrets["trading"]["hard_sl_pct"]
         vol_mult = st.secrets["trading"]["volume_multiplier"]
     except Exception:
-        capital, max_legs, per_leg, hard_sl, vol_mult = 200000, 5, 0.20, 0.06, 1.5
+        capital = 200000
+        max_legs = 5
+        per_leg = 0.20
+        hard_sl = 0.06
+        vol_mult = 1.5
 
-    st.subheader("📌 Current Configuration")
-
-    settings_data = pd.DataFrame(
-        {
-            "Parameter": [
-                "Capital", "Max Legs", "Per Leg %", "Per Leg Amount",
-                "Hard SL %", "Volume Multiplier", "SMA Period",
-                "Data Source",
-            ],
-            "Value": [
-                f"₹{capital:,.0f}", str(max_legs), f"{per_leg * 100:.0f}%",
-                f"₹{capital * per_leg:,.0f}", f"{hard_sl * 100:.0f}%",
-                f"{vol_mult}×", "50 days", "Yahoo Finance",
-            ],
-            "Description": [
-                "Total trading capital",
-                "Maximum simultaneous positions",
-                "Percentage of capital per position",
-                "Amount allocated per trade",
-                "Fixed stop-loss below entry",
-                "Volume must exceed this × of 20D avg",
-                "Simple Moving Average period",
-                "Data provider (Free)",
-            ],
-        }
-    )
+    st.subheader("Current Configuration")
+    settings_data = pd.DataFrame({
+        "Parameter": ["Capital", "Max Legs", "Per Leg %", "Per Leg Amount", "Hard SL %", "Volume Multiplier", "SMA Period", "Data Source"],
+        "Value": [f"Rs{capital:,.0f}", str(max_legs), f"{per_leg * 100:.0f}%", f"Rs{capital * per_leg:,.0f}", f"{hard_sl * 100:.0f}%", f"{vol_mult}x", "50 days", "Yahoo Finance"],
+        "Description": ["Total trading capital", "Max simultaneous positions", "% of capital per position", "Amount per trade", "Fixed stop-loss below entry", "Volume threshold for buy", "Simple Moving Average period", "Data provider (Free)"],
+    })
     st.table(settings_data)
 
     st.divider()
-
-    st.subheader("📖 Darvas Box Trading Rules")
-    st.markdown(
-        """
-    | Rule | Description |
-    |------|-------------|
-    | **BUY** | Close > 50D High AND Close > SMA50 AND Volume > 1.5× 20D Avg |
-    | **Hard SL** | 6% below entry — FIXED from day 1 |
-    | **Trailing SL** | 50-Day Low — only moves UP |
-    | **Active SL** | Maximum of Hard SL and Trailing SL |
-    | **EXIT** | When price falls below Active SL |
-    | **Nifty Filter** | New buys only when Nifty 50 above SMA50 |
-    """
-    )
+    st.subheader("Darvas Box Trading Rules")
+    st.markdown("""
+| Rule | Description |
+|------|-------------|
+| **BUY** | Close > 50D High AND Close > SMA50 AND Volume > 1.5x 20D Avg |
+| **Hard SL** | 6% below entry - FIXED from day 1 |
+| **Trailing SL** | 50-Day Low - only moves UP never down |
+| **Active SL** | MAX(Hard SL, Trailing SL) |
+| **EXIT** | When price falls below Active SL |
+| **Nifty Filter** | New buys only when Nifty 50 above SMA50 |
+""")
 
     st.divider()
-
-    st.subheader("🗑️ Data Management")
+    st.subheader("Data Management")
     c1, c2, c3 = st.columns(3)
     with c1:
         if st.button("Clear Portfolio", use_container_width=True):
@@ -824,22 +640,18 @@ def page_settings():
             st.session_state["portfolio"] = []
             st.session_state["trade_log"] = []
             st.session_state["signals_log"] = []
+            st.session_state["last_scan"] = []
             st.rerun()
 
 
-# ═══════════════ MAIN ═══════════════
 def main():
     inject_css()
     init_state()
-
     if not st.session_state["logged_in"]:
         login_page()
         return
-
     render_sidebar()
-
     page = st.session_state["page"]
-
     if page == "Dashboard":
         page_dashboard()
     elif page == "Charts":
