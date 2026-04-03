@@ -371,23 +371,32 @@ def page_charts():
         else:
             st.info("No signal data available")
 
-    with sc2:
+      with sc2:
         st.markdown("#### 📦 Darvas Boxes Found")
         if not boxes:
-            st.info("No Darvas Boxes detected")
+            st.info("No Darvas Boxes detected in this period")
         else:
-            for i, bx in enumerate(boxes[-5:], 1):
+            for i, bx in enumerate(boxes[-8:], 1):
                 if bx["breakout"] is True:
                     status = "🟢 Breakout"
                 elif bx["breakout"] is False:
                     status = "🔴 Breakdown"
                 else:
-                    status = "🟡 Active"
+                    status = "🟡 Active (waiting)"
+
+                candles = bx.get("candles", 0)
+                height_pct = bx.get("height_pct", 0)
+                bp = bx.get("breakout_price")
+                bp_text = f" @ ₹{bp:,.0f}" if bp else ""
+
                 st.markdown(
                     f"**Box {i}**: "
                     f"{bx['start'].strftime('%d-%b')} → {bx['end'].strftime('%d-%b')} | "
-                    f"Top: ₹{bx['top']:,.2f} | "
-                    f"Bottom: ₹{bx['bottom']:,.2f} | {status}"
+                    f"Top: ₹{bx['top']:,.0f} | "
+                    f"Bot: ₹{bx['bottom']:,.0f} | "
+                    f"Range: {height_pct:.1f}% | "
+                    f"{candles} days | "
+                    f"{status}{bp_text}"
                 )
 
     # Quick stock navigation
