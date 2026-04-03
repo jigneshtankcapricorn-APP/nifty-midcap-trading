@@ -1,5 +1,5 @@
 """
-Chart — matches backtest column names
+Chart — Lines only, no box rectangles
 """
 
 import plotly.graph_objects as go
@@ -12,14 +12,12 @@ from datetime import timedelta
 def create_darvas_chart(
     df: pd.DataFrame,
     symbol: str,
-    boxes: list = None,
     show_signals: bool = True,
-    show_darvas_bands: bool = True,
-    show_traditional_boxes: bool = True,
+    show_bands: bool = True,
+    sma_period: int = 50,
+    nifty_bullish: bool = True,
     chart_height: int = 800,
 ) -> go.Figure:
-    if boxes is None:
-        boxes = []
 
     fig = make_subplots(
         rows=2, cols=1,
@@ -42,110 +40,70 @@ def create_darvas_chart(
         row=1, col=1,
     )
 
-    # 2. SMA 50
-    if "SMA_50" in df.columns:
+    # 2. SMA LINE
+    if "SMA" in df.columns:
         fig.add_trace(
             go.Scatter(
-                x=df.index, y=df["SMA_50"],
-                name="SMA 50 (trend filter)",
+                x=df.index, y=df["SMA"],
+                name=f"SMA {sma_period}",
                 line=dict(color="#42A5F5", width=2),
                 opacity=0.85,
             ),
             row=1, col=1,
         )
 
-    # 3. BOX TOP & TRAILING SL BANDS
-    if show_darvas_bands:
-        if "Box_Top" in df.columns:
-            fig.add_trace(
-                go.Scatter(
-                    x=df.index, y=df["Box_Top"],
-                    name="Box Top (50D High shifted)",
-                    line=dict(color="#FF9800", width=2, dash="dash"),
-                    opacity=0.7,
-                ),
-                row=1, col=1,
-            )
-        if "Trailing_SL" in df.columns:
-            fig.add_trace(
-                go.Scatter(
-                    x=df.index, y=df["Trailing_SL"],
-                    name="Trailing SL (50D Low shifted)",
-                    line=dict(color="#AB47BC", width=2, dash="dash"),
-                    opacity=0.7,
-                    fill="tonexty",
-                    fillcolor="rgba(255,152,0,0.05)",
-                ),
-                row=1, col=1,
-            )
+    # 3. BREAKOUT LEVEL (50D High) — ORANGE DASHED
+    if show_bands and "Box_Top" in df.columns:
+        fig.add_trace(
+            go.Scatter(
+                x=df.index, y=df["Box_Top"],
+                name="50D High (Breakout Level)",
+                line=dict(color="#FF9800", width=2, dash="dash"),
+                opacity=0.7,
+            ),
+            row=1, col=1,
+        )
 
-    # 4. DARVAS BOX RECTANGLES
-    if show_traditional_boxes and boxes:
-        for bx in boxes:
-            if bx["breakout"] is True:
-                border = "#00E676"
-                fill = "rgba(0,230,118,0.10)"
-            elif bx["breakout"] is False:
-                border = "#FF1744"
-                fill = "rgba(255,23,68,0.10)"
-            else:
-                border = "#FFC107"
-                fill = "rgba(255,193,7,0.08)"
-
-            fig.add_shape(
-                type="rect",
-                x0=bx["start"], x1=bx["end"],
-                y0=bx["bottom"], y1=bx["top"],
-                line=dict(color=border, width=2),
-                fillcolor=fill,
-                row=1, col=1,
-            )
-
-            mid_time = bx["start"] + (bx["end"] - bx["start"]) / 2
-            fig.add_annotation(
-                x=mid_time, y=bx["top"],
-                text=f"Rs{bx['top']:.0f}",
-                showarrow=False,
-                font=dict(size=9, color=border),
-                yshift=14, row=1, col=1,
-            )
-            fig.add_annotation(
-                x=mid_time, y=bx["bottom"],
-                text=f"Rs{bx['bottom']:.0f}",
-                showarrow=False,
-                font=dict(size=8, color="#888"),
-                yshift=-14, row=1, col=1,
-            )
-            candles = bx.get("candles", 0)
-            height = bx.get("height_pct", 0)
-            fig.add_annotation(
-                x=mid_time, y=(bx["top"] + bx["bottom"]) / 2,
-                text=f"{candles}d | {height:.1f}%",
-                showarrow=False,
-                font=dict(size=8, color="#aaa"),
-                opacity=0.7, row=1, col=1,
-            )
+    # 4. TRAILING SL (50D Low) — PURPLE DASHED
+    if show_bands and "Trailing_SL" in df.columns:
+        fig.add_trace(
+            go.Scatter(
+                x=df.index, y=df["Trailing_SL"],
+                name="50D Low (Trailing SL)",
+                line=dict(color="#AB47BC", width=2, dash="dash"),
+                opacity=0.7,
+                fill="tonexty" if show_bands and "Box_Top" in df.columns else None,
+                fillcolor="rgba(255,152,0,0.04)",
+            ),
+            row=1, col=1,
+        )
 
     # 5. BUY SIGNALS
     if show_signals and "Buy_Signal" in df.columns:
         buys = df[df["Buy_Signal"]]
         if not buys.empty:
+            # Different color if nifty is bearish
+            buy_color = "#00E676" if nifty_bullish else "#FFD600"
+            buy_label = "BUY" if nifty_bullish else "BUY*"
+
             fig.add_trace(
                 go.Scatter(
                     x=buys.index, y=buys["Low"] * 0.97,
                     mode="markers+text",
-                    name="BUY Signal",
-                    text=["BUY"] * len(buys),
+                    name=f"BUY Signal {'(Nifty OK)' if nifty_bullish else '(⚠️ Nifty DOWN)'}",
+                    text=[buy_label] * len(buys),
                     textposition="bottom center",
-                    textfont=dict(size=10, color="#00E676"),
+                    textfont=dict(size=10, color=buy_color),
                     marker=dict(
                         symbol="triangle-up", size=16,
-                        color="#00E676",
-                        line=dict(color="#00C853", width=1),
+                        color=buy_color,
+                        line=dict(color=buy_color, width=1),
                     ),
                 ),
                 row=1, col=1,
             )
+
+            # Hard SL line for each buy
             for idx_date, row in buys.iterrows():
                 sl = row["Close"] * 0.94
                 end_date = idx_date + timedelta(days=40)
@@ -157,14 +115,14 @@ def create_darvas_chart(
                 )
                 fig.add_annotation(
                     x=idx_date, y=sl,
-                    text=f"Hard SL Rs{sl:.0f} (-6%)",
+                    text=f"SL Rs{sl:.0f} (-6%)",
                     showarrow=False,
                     font=dict(size=8, color="#FF1744"),
                     xanchor="left", yshift=-10,
                     row=1, col=1,
                 )
 
-    # 6. EXIT SIGNALS (Low touches Trailing SL)
+    # 6. EXIT SIGNALS
     if show_signals and "Sell_Signal" in df.columns:
         sells = df[df["Sell_Signal"]]
         if not sells.empty:
@@ -172,7 +130,7 @@ def create_darvas_chart(
                 go.Scatter(
                     x=sells.index, y=sells["High"] * 1.02,
                     mode="markers+text",
-                    name="EXIT Signal",
+                    name="EXIT (Low hit trailing SL)",
                     text=["EXIT"] * len(sells),
                     textposition="top center",
                     textfont=dict(size=9, color="#FF1744"),
@@ -218,9 +176,10 @@ def create_darvas_chart(
         )
 
     # 8. LAYOUT
+    nifty_tag = "" if nifty_bullish else " | ⚠️ Nifty Downtrend"
     fig.update_layout(
         title=dict(
-            text=f"<b>{symbol}</b> — Darvas Box (Backtest Logic)",
+            text=f"<b>{symbol}</b> — SMA {sma_period} | 50D Breakout System{nifty_tag}",
             font=dict(size=18, color="#E0E0E0"),
             x=0.01,
         ),

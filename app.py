@@ -1,6 +1,6 @@
 """
 NIFTY MIDCAP 150 — DARVAS BOX TRADING SYSTEM
-Streamlit App v2.0
+v2.1 — Lines Only, SMA Selector, Nifty Warning Mode
 """
 
 import streamlit as st
@@ -12,14 +12,13 @@ from utils.constants import CONFIG, STOCK_LIST, SECTORS
 from utils.data import (
     fetch_stock_data,
     compute_indicators,
-    find_darvas_boxes,
     check_nifty_bullish,
     scan_stock,
 )
 from utils.charts import create_darvas_chart
 
 st.set_page_config(
-    page_title="Midcap 150 Darvas Box Trading",
+    page_title="Midcap 150 Darvas Trading",
     page_icon="📈",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -27,11 +26,9 @@ st.set_page_config(
 
 
 def inject_css():
-    css = """
+    st.markdown("""
     <style>
-    .stApp {
-        background-color: #0E1117;
-    }
+    .stApp { background-color: #0E1117; }
     section[data-testid="stSidebar"] {
         background: linear-gradient(180deg, #0d1b2a 0%, #1b2838 100%);
     }
@@ -50,21 +47,30 @@ def inject_css():
         border-radius: 12px;
         margin-bottom: 20px;
     }
-    .header-bar h1 {
-        color: white;
-        margin: 0;
-        font-size: 1.6rem;
+    .header-bar h1 { color: white; margin: 0; font-size: 1.6rem; }
+    .header-bar p { color: #bbdefb; margin: 4px 0 0 0; font-size: 0.9rem; }
+    .nifty-warning {
+        background: #4a1c1c;
+        border: 1px solid #ff5252;
+        border-radius: 8px;
+        padding: 10px 16px;
+        color: #ff8a80;
+        font-weight: 600;
+        margin: 8px 0;
     }
-    .header-bar p {
-        color: #bbdefb;
-        margin: 4px 0 0 0;
-        font-size: 0.9rem;
+    .nifty-ok {
+        background: #1b3a1b;
+        border: 1px solid #4caf50;
+        border-radius: 8px;
+        padding: 10px 16px;
+        color: #81c784;
+        font-weight: 600;
+        margin: 8px 0;
     }
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     </style>
-    """
-    st.markdown(css, unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
 
 
 def init_state():
@@ -76,6 +82,7 @@ def init_state():
         "signals_log": [],
         "page": "Dashboard",
         "last_scan": [],
+        "sma_period": 50,
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -114,29 +121,70 @@ def login_page():
         st.caption("Default: admin / admin (if secrets not set)")
 
 
+def get_nifty_warning_html(nifty):
+    """Return HTML warning or OK banner for Nifty status."""
+    if nifty["bullish"]:
+        return (
+            "<div class='nifty-ok'>"
+            "✅ NIFTY 50 UPTREND — Safe to take new positions | "
+            f"Close: Rs{nifty['close']:,.0f} > SMA100: Rs{nifty['sma100']:,.0f} | "
+            f"Above by {nifty['diff']:+,.0f}"
+            "</div>"
+        )
+    else:
+        return (
+            "<div class='nifty-warning'>"
+            "⚠️ WARNING: NIFTY 50 IN DOWNTREND — Buy signals shown but trade at your own risk! | "
+            f"Close: Rs{nifty['close']:,.0f} < SMA100: Rs{nifty['sma100']:,.0f} | "
+            f"Below by {nifty['diff']:,.0f}"
+            "</div>"
+        )
+
+
 def render_sidebar():
     with st.sidebar:
         st.markdown(
             "<div style='text-align:center; padding:10px 0 20px;'>"
-            "<h2 style='color:#4FC3F7; margin:0;'>📈 Darvas Box</h2>"
-            "<p style='color:#78909C; font-size:0.8rem; margin:0;'>Midcap 150 Trading</p>"
+            "<h2 style='color:#4FC3F7; margin:0;'>📈 Darvas Trading</h2>"
+            "<p style='color:#78909C; font-size:0.8rem; margin:0;'>Midcap 150 System</p>"
             "</div>",
             unsafe_allow_html=True,
         )
         st.divider()
+
         pages = ["Dashboard", "Charts", "Stock Scanner", "Portfolio", "Signals Log", "Trade Log", "Settings"]
         icons = ["📊", "📈", "🔍", "💼", "📋", "📜", "⚙️"]
         for i, page in enumerate(pages):
             if st.button(f"{icons[i]} {page}", use_container_width=True, key=f"nav_{page}"):
                 st.session_state["page"] = page
+
         st.divider()
+
+        # ── SMA PERIOD SELECTOR ──
+        st.markdown("**📐 SMA Period**")
+        sma_choice = st.radio(
+            "Choose SMA for trend filter",
+            options=[50, 100],
+            index=0 if st.session_state["sma_period"] == 50 else 1,
+            horizontal=True,
+            key="sma_radio",
+        )
+        st.session_state["sma_period"] = sma_choice
+        st.caption(f"Buy condition: Close > SMA {sma_choice}")
+
+        st.divider()
+
+        # ── NIFTY STATUS ──
         nifty = check_nifty_bullish()
         if nifty["bullish"]:
-            st.success(f"NIFTY 50: Rs{nifty['close']:,.0f} Bullish")
+            st.success(f"NIFTY 50: Rs{nifty['close']:,.0f} BULLISH")
         else:
-            st.error(f"NIFTY 50: Rs{nifty['close']:,.0f} Bearish")
-        st.caption(f"SMA50: Rs{nifty['sma50']:,.0f} | Diff: {nifty['diff']:+,.0f}")
+            st.error(f"NIFTY 50: Rs{nifty['close']:,.0f} BEARISH")
+        st.caption(f"SMA100: Rs{nifty['sma100']:,.0f} | Diff: {nifty['diff']:+,.0f}")
+
         st.divider()
+
+        # ── QUICK STOCK SELECT ──
         symbols = [s["symbol"] for s in STOCK_LIST]
         idx = symbols.index(st.session_state["selected_stock"]) if st.session_state["selected_stock"] in symbols else 0
         chosen = st.selectbox("Quick Stock Select", symbols, index=idx)
@@ -145,6 +193,7 @@ def render_sidebar():
         if st.button("View Chart", use_container_width=True, type="primary"):
             st.session_state["page"] = "Charts"
             st.rerun()
+
         st.divider()
         if st.button("Logout", use_container_width=True):
             st.session_state["logged_in"] = False
@@ -154,9 +203,14 @@ def render_sidebar():
 def page_dashboard():
     st.markdown(
         "<div class='header-bar'><h1>📊 Dashboard</h1>"
-        "<p>Nifty Midcap 150 Darvas Box Trading System</p></div>",
+        "<p>Nifty Midcap 150 Darvas Trading System</p></div>",
         unsafe_allow_html=True,
     )
+
+    # Nifty Status Banner
+    nifty = check_nifty_bullish()
+    st.markdown(get_nifty_warning_html(nifty), unsafe_allow_html=True)
+
     try:
         capital = st.secrets["trading"]["capital"]
         max_legs = st.secrets["trading"]["max_legs"]
@@ -174,8 +228,7 @@ def page_dashboard():
     c2.metric("Per Leg", f"Rs{capital * per_leg:,.0f}")
     c3.metric("Max Legs", max_legs)
     c4.metric("Hard SL", f"{hard_sl * 100:.0f}%")
-    nifty = check_nifty_bullish()
-    c5.metric("Nifty Trend", "BULLISH" if nifty["bullish"] else "BEARISH")
+    c5.metric("SMA Filter", f"SMA {st.session_state['sma_period']}")
 
     st.divider()
     st.subheader("Portfolio Summary")
@@ -221,12 +274,17 @@ def page_dashboard():
 
 def page_charts():
     st.markdown(
-        "<div class='header-bar'><h1>📈 Darvas Box Chart</h1>"
-        "<p>Interactive chart with Darvas Box, signals, and SL levels</p></div>",
+        "<div class='header-bar'><h1>📈 Chart Analysis</h1>"
+        "<p>Darvas Breakout Lines with SMA Filter</p></div>",
         unsafe_allow_html=True,
     )
 
-    col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
+    # Nifty Warning Banner
+    nifty = check_nifty_bullish()
+    st.markdown(get_nifty_warning_html(nifty), unsafe_allow_html=True)
+
+    # Controls
+    col1, col2, col3 = st.columns([2, 1, 1])
     with col1:
         symbols = [s["symbol"] for s in STOCK_LIST]
         idx = symbols.index(st.session_state["selected_stock"]) if st.session_state["selected_stock"] in symbols else 0
@@ -235,11 +293,10 @@ def page_charts():
     with col2:
         period = st.selectbox("Period", ["6mo", "1y", "2y", "5y"], index=1)
     with col3:
-        show_boxes = st.checkbox("Darvas Boxes", value=True)
-    with col4:
-        show_bands = st.checkbox("50D Bands", value=True)
+        show_bands = st.checkbox("Show 50D Lines", value=True)
 
     symbol = st.session_state["selected_stock"]
+    sma_period = st.session_state["sma_period"]
 
     with st.spinner(f"Loading {symbol} data..."):
         df = fetch_stock_data(symbol, period=period)
@@ -248,9 +305,9 @@ def page_charts():
         st.error(f"Could not load data for {symbol}. Try again later.")
         return
 
-    df = compute_indicators(df)
-    boxes = find_darvas_boxes(df) if show_boxes else []
+    df = compute_indicators(df, sma_period=sma_period)
 
+    # Stock info bar
     latest = df.iloc[-1]
     prev = df.iloc[-2] if len(df) > 1 else latest
     change = latest["Close"] - prev["Close"]
@@ -262,23 +319,26 @@ def page_charts():
     i3.metric("High", f"Rs{latest['High']:,.2f}")
     i4.metric("Low", f"Rs{latest['Low']:,.2f}")
     i5.metric("Volume", f"{latest['Volume']:,.0f}")
-    sma_val = latest.get("SMA50", 0)
-    i6.metric("SMA 50", f"Rs{sma_val:,.2f}" if not pd.isna(sma_val) else "N/A")
+    sma_val = latest.get("SMA", 0)
+    i6.metric(f"SMA {sma_period}", f"Rs{sma_val:,.2f}" if not pd.isna(sma_val) else "N/A")
 
+    # Chart — NO BOXES, just lines
     fig = create_darvas_chart(
-        df, symbol, boxes,
+        df, symbol,
         show_signals=True,
-        show_darvas_bands=show_bands,
-        show_traditional_boxes=show_boxes,
+        show_bands=show_bands,
+        sma_period=sma_period,
+        nifty_bullish=nifty["bullish"],
     )
     st.plotly_chart(fig, use_container_width=True)
 
     st.divider()
 
+    # Signal Summary
     col_left, col_right = st.columns(2)
 
     with col_left:
-        st.markdown("#### Buy Signals (Last 30 Days)")
+        st.markdown(f"#### Buy Signals (Last 30 Days) — SMA {sma_period}")
         recent = df.tail(30)
         if "Buy_Signal" in recent.columns:
             buy_days = recent[recent["Buy_Signal"] == True]
@@ -287,41 +347,46 @@ def page_charts():
             else:
                 for dt, row in buy_days.iterrows():
                     sl = row["Close"] * 0.94
+                    nifty_tag = "" if nifty["bullish"] else " ⚠️ NIFTY DOWN"
                     st.markdown(
-                        f"**{dt.strftime('%d-%b-%Y')}** - "
+                        f"**{dt.strftime('%d-%b-%Y')}** — "
                         f"Rs{row['Close']:,.2f} | "
                         f"Vol: {row['Vol_Ratio']:.1f}x | "
-                        f"SL: Rs{sl:,.2f}"
+                        f"SL: Rs{sl:,.2f}{nifty_tag}"
                     )
         else:
-            st.info("No signal data available")
+            st.info("No signal data")
 
     with col_right:
-        st.markdown("#### Darvas Boxes Found")
-        if not boxes:
-            st.info("No Darvas Boxes detected in this period")
-        else:
-            for i, bx in enumerate(boxes[-8:], 1):
-                if bx["breakout"] is True:
-                    status = "Breakout"
-                elif bx["breakout"] is False:
-                    status = "Breakdown"
-                else:
-                    status = "Active"
-                candles = bx.get("candles", 0)
-                height_pct = bx.get("height_pct", 0)
-                bp = bx.get("breakout_price")
-                bp_text = f" @ Rs{bp:,.0f}" if bp else ""
-                st.markdown(
-                    f"**Box {i}**: "
-                    f"{bx['start'].strftime('%d-%b')} to {bx['end'].strftime('%d-%b')} | "
-                    f"Top: Rs{bx['top']:,.0f} | "
-                    f"Bot: Rs{bx['bottom']:,.0f} | "
-                    f"Range: {height_pct:.1f}% | "
-                    f"{candles} days | "
-                    f"{status}{bp_text}"
-                )
+        st.markdown("#### Current Levels")
+        if "Box_Top" in df.columns and not pd.isna(latest.get("Box_Top")):
+            box_top = latest["Box_Top"]
+            trail_sl = latest.get("Trailing_SL", 0)
+            sma = latest.get("SMA", 0)
+            close = latest["Close"]
 
+            st.markdown(f"**Breakout Level (50D High):** Rs{box_top:,.2f}")
+            if close > box_top:
+                st.success(f"Price Rs{close:,.2f} is ABOVE breakout level")
+            else:
+                gap = ((box_top - close) / close) * 100
+                st.info(f"Price Rs{close:,.2f} is {gap:.1f}% below breakout")
+
+            st.markdown(f"**Trailing SL (50D Low):** Rs{trail_sl:,.2f}")
+            buffer_pct = ((close - trail_sl) / close) * 100 if trail_sl > 0 else 0
+            st.markdown(f"Buffer from SL: {buffer_pct:.1f}%")
+
+            st.markdown(f"**SMA {sma_period}:** Rs{sma:,.2f}")
+            if close > sma:
+                st.success(f"Price ABOVE SMA {sma_period} — Uptrend")
+            else:
+                st.warning(f"Price BELOW SMA {sma_period} — Downtrend")
+
+            st.markdown(f"**Hard SL (if buy today):** Rs{close * 0.94:,.2f} (-6%)")
+        else:
+            st.info("Not enough data for levels")
+
+    # Quick stock navigation
     st.divider()
     st.markdown("#### Quick Navigation")
     sector_filter = st.selectbox("Filter by Sector", ["All"] + SECTORS)
@@ -339,15 +404,22 @@ def page_charts():
 def page_scanner():
     st.markdown(
         "<div class='header-bar'><h1>🔍 Stock Scanner</h1>"
-        "<p>Scan Nifty Midcap 150 for Darvas Box breakout signals</p></div>",
+        "<p>Scan Nifty Midcap 150 for breakout signals</p></div>",
         unsafe_allow_html=True,
     )
+
+    # Nifty Warning Banner
+    nifty = check_nifty_bullish()
+    st.markdown(get_nifty_warning_html(nifty), unsafe_allow_html=True)
 
     col1, col2 = st.columns([1, 2])
     with col1:
         filter_sector = st.multiselect("Filter by Sector", SECTORS, default=[])
     with col2:
-        filter_type = st.radio("Show", ["All", "Buy Signals Only", "Above SMA50", "Breakout"], horizontal=True)
+        filter_type = st.radio("Show", ["All", "Buy Signals Only", "Above SMA", "Breakout"], horizontal=True)
+
+    sma_period = st.session_state["sma_period"]
+    st.caption(f"Using SMA {sma_period} for trend filter | Nifty filter: {'BULLISH' if nifty['bullish'] else 'BEARISH (signals still shown with warning)'}")
 
     if st.button("Run Full Scan", type="primary"):
         filtered = STOCK_LIST
@@ -361,7 +433,7 @@ def page_scanner():
         for i, stock in enumerate(filtered):
             status_text.text(f"Scanning {stock['symbol']} ({i + 1}/{len(filtered)})...")
             progress.progress((i + 1) / len(filtered))
-            result = scan_stock(stock["symbol"])
+            result = scan_stock(stock["symbol"], sma_period=sma_period)
             if result:
                 result["name"] = stock["name"]
                 result["sector"] = stock["sector"]
@@ -378,7 +450,7 @@ def page_scanner():
 
         if filter_type == "Buy Signals Only":
             df_results = df_results[df_results["buy_signal"] == True]
-        elif filter_type == "Above SMA50":
+        elif filter_type == "Above SMA":
             df_results = df_results[df_results["above_sma"] == True]
         elif filter_type == "Breakout":
             df_results = df_results[df_results["breakout"] == True]
@@ -387,19 +459,19 @@ def page_scanner():
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("Stocks Scanned", len(results))
         m2.metric("Buy Signals", int(df_results["buy_signal"].sum()) if len(df_results) > 0 else 0)
-        m3.metric("Above SMA50", int(df_results["above_sma"].sum()) if len(df_results) > 0 else 0)
+        m3.metric("Above SMA", int(df_results["above_sma"].sum()) if len(df_results) > 0 else 0)
         m4.metric("Breakouts", int(df_results["breakout"].sum()) if len(df_results) > 0 else 0)
 
         st.divider()
 
         if df_results.empty:
-            st.info("No stocks match the filter criteria.")
+            st.info("No stocks match the filter.")
             return
 
         df_results = df_results.sort_values(["buy_signal", "vol_ratio"], ascending=[False, False])
 
         st.dataframe(
-            df_results[["symbol", "name", "sector", "close", "sma50", "high_50d", "low_50d", "vol_ratio", "buy_signal", "above_sma", "breakout"]],
+            df_results[["symbol", "name", "sector", "close", f"sma", "high_50d", "low_50d", "vol_ratio", "buy_signal", "above_sma", "breakout"]],
             use_container_width=True,
             height=600,
         )
@@ -407,11 +479,16 @@ def page_scanner():
         buy_stocks = df_results[df_results["buy_signal"] == True]
         if not buy_stocks.empty:
             st.divider()
-            st.success(f"{len(buy_stocks)} BUY SIGNAL(S) FOUND!")
+            if nifty["bullish"]:
+                st.success(f"{len(buy_stocks)} BUY SIGNAL(S) FOUND! Nifty is BULLISH — good to go!")
+            else:
+                st.warning(f"{len(buy_stocks)} BUY SIGNAL(S) FOUND! ⚠️ But NIFTY is in DOWNTREND — trade with caution!")
+
             btn_cols = st.columns(min(5, len(buy_stocks)))
             for j, (_, row) in enumerate(buy_stocks.iterrows()):
                 with btn_cols[j % len(btn_cols)]:
-                    if st.button(f"{row['symbol']} Rs{row['close']:,.0f}", key=f"scan_{row['symbol']}", use_container_width=True):
+                    label = f"{row['symbol']} Rs{row['close']:,.0f}"
+                    if st.button(label, key=f"scan_{row['symbol']}", use_container_width=True):
                         st.session_state["selected_stock"] = row["symbol"]
                         st.session_state["page"] = "Charts"
                         st.rerun()
@@ -422,9 +499,12 @@ def page_scanner():
 def page_portfolio():
     st.markdown(
         "<div class='header-bar'><h1>💼 Portfolio</h1>"
-        "<p>Manage positions, track PnL, and monitor stop-losses</p></div>",
+        "<p>Manage positions, track PnL, monitor stop-losses</p></div>",
         unsafe_allow_html=True,
     )
+
+    nifty = check_nifty_bullish()
+    st.markdown(get_nifty_warning_html(nifty), unsafe_allow_html=True)
 
     try:
         capital = st.secrets["trading"]["capital"]
@@ -474,7 +554,7 @@ def page_portfolio():
     st.subheader(f"Active Positions ({len(active)} / {max_legs})")
 
     if not active:
-        st.info("No active positions. Add one above or run the scanner.")
+        st.info("No active positions.")
     else:
         for pos in active:
             try:
@@ -489,10 +569,11 @@ def page_portfolio():
                     pos["days_held"] = (datetime.now() - entry_dt).days
                     df_full = fetch_stock_data(pos["symbol"], period="6mo")
                     if not df_full.empty and len(df_full) >= 50:
-                        low_50d = df_full["Low"].rolling(50).min().iloc[-1]
-                        new_tsl = max(pos["trailing_sl"], low_50d)
-                        pos["trailing_sl"] = round(new_tsl, 2)
-                        pos["active_sl"] = round(max(pos["hard_sl"], pos["trailing_sl"]), 2)
+                        low_50d = df_full["Low"].rolling(50).min().shift(1).iloc[-1]
+                        if not pd.isna(low_50d):
+                            new_tsl = max(pos["trailing_sl"], low_50d)
+                            pos["trailing_sl"] = round(new_tsl, 2)
+                            pos["active_sl"] = round(max(pos["hard_sl"], pos["trailing_sl"]), 2)
             except Exception:
                 pass
 
@@ -551,7 +632,13 @@ def page_signals():
         buy_signals = [s for s in last_scan if s.get("buy_signal")]
         if buy_signals:
             st.subheader(f"Buy Signals from Last Scan ({len(buy_signals)})")
-            st.dataframe(pd.DataFrame(buy_signals)[["symbol", "close", "vol_ratio", "high_50d", "low_50d", "sector"]], use_container_width=True)
+            nifty = check_nifty_bullish()
+            if not nifty["bullish"]:
+                st.warning("⚠️ These signals were generated while NIFTY was in DOWNTREND — trade with caution!")
+            st.dataframe(
+                pd.DataFrame(buy_signals)[["symbol", "close", "vol_ratio", "high_50d", "low_50d", "sector"]],
+                use_container_width=True,
+            )
         else:
             st.info("No buy signals in last scan.")
         st.divider()
@@ -603,25 +690,48 @@ def page_settings():
         hard_sl = 0.06
         vol_mult = 1.5
 
+    sma_period = st.session_state["sma_period"]
+
     st.subheader("Current Configuration")
     settings_data = pd.DataFrame({
-        "Parameter": ["Capital", "Max Legs", "Per Leg %", "Per Leg Amount", "Hard SL %", "Volume Multiplier", "SMA Period", "Data Source"],
-        "Value": [f"Rs{capital:,.0f}", str(max_legs), f"{per_leg * 100:.0f}%", f"Rs{capital * per_leg:,.0f}", f"{hard_sl * 100:.0f}%", f"{vol_mult}x", "50 days", "Yahoo Finance"],
-        "Description": ["Total trading capital", "Max simultaneous positions", "% of capital per position", "Amount per trade", "Fixed stop-loss below entry", "Volume threshold for buy", "Simple Moving Average period", "Data provider (Free)"],
+        "Parameter": [
+            "Capital", "Max Legs", "Per Leg %", "Per Leg Amount",
+            "Hard SL %", "Volume Multiplier", "SMA Period (selected)",
+            "Nifty Filter", "Data Source",
+        ],
+        "Value": [
+            f"Rs{capital:,.0f}", str(max_legs), f"{per_leg * 100:.0f}%",
+            f"Rs{capital * per_leg:,.0f}", f"{hard_sl * 100:.0f}%",
+            f"{vol_mult}x", f"SMA {sma_period}",
+            "SMA 100 (warning mode)", "Yahoo Finance",
+        ],
+        "Description": [
+            "Total trading capital",
+            "Max simultaneous positions",
+            "% of capital per position",
+            "Amount per trade",
+            "Fixed stop-loss below entry",
+            "Volume threshold for buy signal",
+            "Choose 50 or 100 in sidebar",
+            "Signals shown always, warning if Nifty bearish",
+            "Data provider (Free)",
+        ],
     })
     st.table(settings_data)
 
     st.divider()
-    st.subheader("Darvas Box Trading Rules")
-    st.markdown("""
+    st.subheader("Trading Rules (Your Backtest Logic)")
+    st.markdown(f"""
 | Rule | Description |
 |------|-------------|
-| **BUY** | Close > 50D High AND Close > SMA50 AND Volume > 1.5x 20D Avg |
-| **Hard SL** | 6% below entry - FIXED from day 1 |
-| **Trailing SL** | 50-Day Low - only moves UP never down |
+| **Box Top** | 50-Day Highest High .shift(1) — excludes today |
+| **Trailing SL** | 50-Day Lowest Low .shift(1) — excludes today |
+| **BUY** | Close > Box Top AND Close > SMA {sma_period} AND Volume > 1.5x 20D Avg |
+| **Hard SL** | 6% below entry price — FIXED, never changes |
+| **Trailing SL** | 50D Low — only moves UP, never down |
 | **Active SL** | MAX(Hard SL, Trailing SL) |
-| **EXIT** | When price falls below Active SL |
-| **Nifty Filter** | New buys only when Nifty 50 above SMA50 |
+| **EXIT** | Open <= Active SL (gap down) OR Low <= Active SL (intraday) |
+| **Nifty Filter** | Nifty Close > SMA 100 = Bullish. If bearish, signals shown with WARNING |
 """)
 
     st.divider()
