@@ -1,6 +1,6 @@
 """
 Market Data + Darvas Box Detection
-MATCHES YOUR APP SCRIPT LOGIC EXACTLY
+MATCHES YOUR 25-YEAR BACKTEST LOGIC EXACTLY
 """
 
 import yfinance as yf
@@ -22,12 +22,12 @@ def fetch_stock_data(symbol: str, period: str = "1y") -> pd.DataFrame:
         df.index = pd.to_datetime(df.index).tz_localize(None)
         df.dropna(subset=["Close"], inplace=True)
         return df
-    except Exception as e:
+    except Exception:
         return pd.DataFrame()
 
 
 @st.cache_data(ttl=900, show_spinner=False)
-def fetch_nifty_data(period: str = "6mo") -> pd.DataFrame:
+def fetch_nifty_data(period: str = "1y") -> pd.DataFrame:
     try:
         ticker = yf.Ticker("^NSEI")
         df = ticker.history(period=period, interval="1d")
@@ -40,184 +40,152 @@ def fetch_nifty_data(period: str = "6mo") -> pd.DataFrame:
         return pd.DataFrame()
 
 
-# ═══════════════════ INDICATORS (YOUR APP SCRIPT LOGIC) ═══════════════════
+# ═══════════════════════════════════════════════════════
+# INDICATORS — EXACT MATCH WITH YOUR BACKTEST
+# ═══════════════════════════════════════════════════════
+#
+#  YOUR BACKTEST CODE:
+#  ───────────────────
+#  df['Box_Top']     = df['High'].rolling(window=50).max().shift(1)
+#  df['Trailing_SL'] = df['Low'].rolling(window=50).min().shift(1)
+#  df['SMA_50']      = df['Close'].rolling(window=50).mean()
+#  df['Vol_SMA_20']  = df['Volume'].rolling(window=20).mean()
+#
+#  KEY: Both Box_Top and Trailing_SL use .shift(1)
+#       This means EXCLUDING today's bar
+#       Yesterday's 50-day high/low is what matters
+#
+# ═══════════════════════════════════════════════════════
 
 def compute_indicators(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    EXACT copy of your App Script calculations:
-
-    1. SMA_50       = 50-day Simple Moving Average of Close
-    2. High_50D     = Highest High of last 50 days EXCLUDING today (shifted by 1)
-                      → This is the BREAKOUT level / box ceiling
-    3. Low_50D      = Lowest Low of last 50 days INCLUDING today
-                      → This is the TRAILING SL / box floor
-    4. Avg_Vol_20   = 20-day Average Volume
-    5. Vol_Ratio    = Today's Volume / Avg_Vol_20
-    6. Buy_Signal   = Close > High_50D AND Close > SMA50 AND Volume > 1.5x Avg_Vol_20
-    """
     if df.empty or len(df) < 20:
         return df
 
     df = df.copy()
 
+    # ── Box_Top = 50-Day HIGH, shifted by 1 (EXCLUDES today) ──
+    # YOUR BACKTEST: df['Box_Top'] = df['High'].rolling(window=50).max().shift(1)
+    df["Box_Top"] = df["High"].rolling(window=50, min_periods=10).max().shift(1)
+
+    # ── Trailing_SL = 50-Day LOW, shifted by 1 (EXCLUDES today) ──
+    # YOUR BACKTEST: df['Trailing_SL'] = df['Low'].rolling(window=50).min().shift(1)
+    df["Trailing_SL"] = df["Low"].rolling(window=50, min_periods=10).min().shift(1)
+
     # ── SMA 50 ──
-    # App Script: sma50Sum / sma50Period (using last 50 closes)
-    df["SMA50"] = df["Close"].rolling(window=50, min_periods=20).mean()
+    # YOUR BACKTEST: df['SMA_50'] = df['Close'].rolling(window=50).mean()
+    df["SMA_50"] = df["Close"].rolling(window=50, min_periods=20).mean()
 
-    # ── 50-Day High EXCLUDING today ──
-    # App Script: for (h = len-1-high50Period; h < len-1; h++) → excludes last bar
-    # In pandas: rolling max then shift(1) to exclude current day
-    df["High_50D"] = df["High"].rolling(window=50, min_periods=10).max().shift(1)
+    # ── 20-Day Volume Average ──
+    # YOUR BACKTEST: df['Vol_SMA_20'] = df['Volume'].rolling(window=20).mean()
+    df["Vol_SMA_20"] = df["Volume"].rolling(window=20, min_periods=5).mean()
 
-    # ── 50-Day Low INCLUDING today ──
-    # App Script: for (l = len-low50Period; l < len; l++) → includes last bar
-    df["Low_50D"] = df["Low"].rolling(window=50, min_periods=10).min()
-
-    # ── 20-Day Average Volume ──
-    # App Script: volSum / volAvgPeriod (using last 20 volumes)
-    df["Avg_Vol_20"] = df["Volume"].rolling(window=20, min_periods=5).mean()
-
-    # ── Volume Ratio ──
+    # ── Volume Ratio (for display) ──
     df["Vol_Ratio"] = np.where(
-        df["Avg_Vol_20"] > 0,
-        df["Volume"] / df["Avg_Vol_20"],
+        df["Vol_SMA_20"] > 0,
+        df["Volume"] / df["Vol_SMA_20"],
         0
     )
 
-    # ══════════════════════════════════════════════════
-    # BUY SIGNAL — EXACT APP SCRIPT LOGIC:
-    #   var breakout = close > high50d;
-    #   var aboveSMA = close > sma50;
-    #   var volumeSpike = volume > (avgVol20 * 1.5);
-    #   if (breakout && aboveSMA && volumeSpike) → BUY
-    # ══════════════════════════════════════════════════
+    # ══════════════════════════════════════════════════════
+    # BUY SIGNAL — EXACT BACKTEST LOGIC:
+    #
+    # YOUR CODE:
+    #   is_breakout    = row['Close'] > row['Box_Top']
+    #   is_uptrend     = row['Close'] > row['SMA_50']
+    #   is_huge_volume = row['Volume'] > (row['Vol_SMA_20'] * 1.5)
+    #   if is_breakout and is_uptrend and is_huge_volume: BUY
+    # ══════════════════════════════════════════════════════
     df["Buy_Signal"] = (
-        (df["Close"] > df["High_50D"]) &          # Condition 1: breakout
-        (df["Close"] > df["SMA50"]) &              # Condition 2: above SMA
-        (df["Volume"] > 1.5 * df["Avg_Vol_20"])    # Condition 3: volume spike
+        (df["Close"] > df["Box_Top"]) &
+        (df["Close"] > df["SMA_50"]) &
+        (df["Volume"] > 1.5 * df["Vol_SMA_20"])
     )
 
-    # ── Hard Stop Loss = 6% below entry ──
+    # ── Hard SL = 6% below entry (for display on chart) ──
     df["Hard_SL"] = np.where(df["Buy_Signal"], df["Close"] * 0.94, np.nan)
 
-    # ══════════════════════════════════════════════════
-    # TRAILING SL — EXACT APP SCRIPT LOGIC:
-    #   var newTrailingSL = low50d;
-    #   if (newTrailingSL < currentTrailingSL)
-    #       newTrailingSL = currentTrailingSL; // NEVER lower
-    # ══════════════════════════════════════════════════
-    df["Trailing_SL"] = df["Low_50D"]
+    # ══════════════════════════════════════════════════════
+    # EXIT SIGNAL — EXACT BACKTEST LOGIC:
+    #
+    # YOUR CODE:
+    #   current_sl = max(pos['hard_sl'], row['Trailing_SL'])
+    #   if row['Open'] <= current_sl:
+    #       exit_price = row['Open']          ← gap down
+    #   elif row['Low'] <= current_sl:
+    #       exit_price = current_sl           ← intraday hit
+    #
+    # For chart display we check:
+    #   Low touches Trailing_SL = potential exit
+    # ══════════════════════════════════════════════════════
+    df["Sell_Signal"] = df["Low"] <= df["Trailing_SL"]
 
-    # ══════════════════════════════════════════════════
-    # EXIT SIGNAL — EXACT APP SCRIPT LOGIC:
-    #   Active SL = MAX(Hard SL, Trailing SL)
-    #   Exit when Close < Active SL OR Day Low < Active SL
-    # ══════════════════════════════════════════════════
-    df["Sell_Signal"] = df["Close"] < df["Low_50D"]
+    # Keep old column names for compatibility
+    df["High_50D"] = df["Box_Top"]
+    df["Low_50D"] = df["Trailing_SL"]
+    df["Avg_Vol_20"] = df["Vol_SMA_20"]
+    df["SMA50"] = df["SMA_50"]
 
     return df
 
 
-# ═══════════════════════════════════════════════════════════════
-# DARVAS BOX DETECTION — BASED ON YOUR APP SCRIPT
-# ═══════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════
+# DARVAS BOX DETECTION — BASED ON YOUR BACKTEST
+# ═══════════════════════════════════════════════════════
 #
-#  Your app script creates boxes using 50D High and 50D Low:
+#  Box_Top      = 50D High .shift(1)  = ceiling
+#  Trailing_SL  = 50D Low  .shift(1)  = floor
 #
-#  ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄  50D High = Box Ceiling
-#  ┃                   ┃
-#  ┃  CONSOLIDATION    ┃  Price trades between ceiling and floor
-#  ┃  ZONE = THE BOX   ┃  This can last days, weeks, or months
-#  ┃                   ┃
-#  ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄  50D Low = Box Floor
+#  INSIDE BOX:  Trailing_SL <= Close <= Box_Top
+#  BREAKOUT:    Close > Box_Top  (potential BUY)
+#  BREAKDOWN:   Low <= Trailing_SL  (potential EXIT)
 #
-#  Close > 50D High → BREAKOUT (end of box, BUY direction) ✅
-#  Close < 50D Low  → BREAKDOWN (end of box, EXIT direction) ❌
+#  YOUR BACKTEST EXIT:
+#    if row['Open'] <= current_sl → exit at open (gap down)
+#    elif row['Low'] <= current_sl → exit at SL (intraday)
 #
-#  WHY BOXES HAVE DIFFERENT WIDTHS:
-#  ─────────────────────────────────
-#  Some stocks consolidate for 5 days, some for 50 days.
-#  This is CORRECT and NATURAL. A wider box means:
-#  → Longer consolidation → Potentially stronger breakout
-#
-#  WHY BOXES HAVE DIFFERENT HEIGHTS:
-#  ─────────────────────────────────
-#  Height = 50D High - 50D Low = the trading range
-#  Volatile stocks → taller boxes
-#  Quiet stocks → shorter boxes
-#
-# ═══════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════
 
 def find_darvas_boxes(df: pd.DataFrame, min_box_days: int = 3) -> list:
-    """
-    Detect consolidation boxes using YOUR App Script's 50D High/Low logic.
-
-    Each day is classified as:
-    - INSIDE:    50D Low <= Close <= 50D High  (inside the box)
-    - BREAKOUT:  Close > 50D High              (broke above ceiling)
-    - BREAKDOWN: Close < 50D Low               (broke below floor)
-
-    A BOX = consecutive INSIDE days.
-    Box ends when BREAKOUT or BREAKDOWN happens.
-
-    Parameters
-    ----------
-    df : DataFrame with High_50D and Low_50D columns (from compute_indicators)
-    min_box_days : minimum candles for a valid box (default 3)
-
-    Returns
-    -------
-    list of boxes, each with: start, end, top, bottom, breakout, candles, height_pct
-    """
-    if "High_50D" not in df.columns or "Low_50D" not in df.columns:
+    if "Box_Top" not in df.columns or "Trailing_SL" not in df.columns:
         return []
 
-    valid = df.dropna(subset=["High_50D", "Low_50D"]).copy()
+    valid = df.dropna(subset=["Box_Top", "Trailing_SL"]).copy()
     if len(valid) < 10:
         return []
 
     closes = valid["Close"].values
-    high_50d = valid["High_50D"].values
-    low_50d = valid["Low_50D"].values
+    highs = valid["High"].values
+    lows = valid["Low"].values
+    opens = valid["Open"].values
+    box_tops = valid["Box_Top"].values
+    trail_sls = valid["Trailing_SL"].values
     dates = valid.index
     n = len(valid)
 
     boxes = []
-
     in_box = False
     box_start = 0
     box_top = 0.0
     box_bottom = float("inf")
 
     for i in range(n):
-        # ── Classify today ──
-        above_ceiling = closes[i] > high_50d[i]    # Breakout
-        below_floor = closes[i] < low_50d[i]       # Breakdown
-        inside_box = not above_ceiling and not below_floor  # Inside
+        is_breakout = closes[i] > box_tops[i]
+        is_breakdown = lows[i] <= trail_sls[i]
+        is_inside = not is_breakout and not is_breakdown
 
         if not in_box:
-            # ── Looking for new box ──
-            if inside_box:
-                # Start new consolidation box
+            if is_inside:
                 in_box = True
                 box_start = i
-                box_top = high_50d[i]
-                box_bottom = low_50d[i]
-
+                box_top = box_tops[i]
+                box_bottom = trail_sls[i]
         else:
-            # ── Currently inside a box ──
-            if inside_box:
-                # Still inside — update box boundaries
-                # Box top = highest 50D High during consolidation
-                # Box bottom = lowest 50D Low during consolidation
-                box_top = max(box_top, high_50d[i])
-                box_bottom = min(box_bottom, low_50d[i])
+            if is_inside:
+                box_top = max(box_top, box_tops[i])
+                box_bottom = min(box_bottom, trail_sls[i])
 
-            elif above_ceiling:
-                # ═══ BREAKOUT! Close > 50D High ═══
-                # This is your app script's BUY condition (condition 1 of 3)
+            elif is_breakout:
                 candle_count = i - box_start
-
                 if candle_count >= min_box_days and box_top > box_bottom:
                     boxes.append({
                         "start": dates[box_start],
@@ -231,31 +199,32 @@ def find_darvas_boxes(df: pd.DataFrame, min_box_days: int = 3) -> list:
                             (box_top - box_bottom) / box_bottom * 100, 2
                         ) if box_bottom > 0 else 0,
                     })
-
                 in_box = False
 
-            elif below_floor:
-                # ═══ BREAKDOWN! Close < 50D Low ═══
-                # This is your app script's EXIT condition
+            elif is_breakdown:
                 candle_count = i - box_start
-
                 if candle_count >= min_box_days and box_top > box_bottom:
+                    # Determine exit price like your backtest
+                    if opens[i] <= trail_sls[i]:
+                        exit_p = round(opens[i], 2)
+                    else:
+                        exit_p = round(trail_sls[i], 2)
+
                     boxes.append({
                         "start": dates[box_start],
                         "end": dates[i],
                         "top": round(box_top, 2),
                         "bottom": round(box_bottom, 2),
                         "breakout": False,
-                        "breakout_price": round(closes[i], 2),
+                        "breakout_price": exit_p,
                         "candles": candle_count,
                         "height_pct": round(
                             (box_top - box_bottom) / box_bottom * 100, 2
                         ) if box_bottom > 0 else 0,
                     })
-
                 in_box = False
 
-    # ── Active box (price still consolidating at end of data) ──
+    # Active box at end of data
     if in_box:
         candle_count = (n - 1) - box_start
         if candle_count >= min_box_days and box_top > box_bottom:
@@ -264,7 +233,7 @@ def find_darvas_boxes(df: pd.DataFrame, min_box_days: int = 3) -> list:
                 "end": dates[-1],
                 "top": round(box_top, 2),
                 "bottom": round(box_bottom, 2),
-                "breakout": None,  # Still active, waiting for break
+                "breakout": None,
                 "breakout_price": None,
                 "candles": candle_count,
                 "height_pct": round(
@@ -275,32 +244,42 @@ def find_darvas_boxes(df: pd.DataFrame, min_box_days: int = 3) -> list:
     return boxes
 
 
-# ═══════════════════ NIFTY BULLISH CHECK ═══════════════════
+# ═══════════════════════════════════════════════════════
+# NIFTY BULLISH CHECK — YOUR BACKTEST USES SMA 100!
+# ═══════════════════════════════════════════════════════
+#
+#  YOUR BACKTEST CODE:
+#    nifty_df['SMA_100'] = nifty_df['Close'].rolling(100).mean()
+#    market_bullish_dates = set(
+#        nifty_df[nifty_df['Close'] > nifty_df['SMA_100']].index
+#    )
+#
+#  NOT SMA 50! Your backtest uses SMA 100 for Nifty filter!
+#
+# ═══════════════════════════════════════════════════════
 
 def check_nifty_bullish() -> dict:
-    """
-    YOUR APP SCRIPT LOGIC:
-        var isBullish = currentClose > sma50;
-    Only allow new buys when Nifty 50 is above its SMA 50.
-    """
-    df = fetch_nifty_data("6mo")
-    if df.empty or len(df) < 50:
-        return {"bullish": False, "close": 0, "sma50": 0, "diff": 0}
+    df = fetch_nifty_data("1y")
+    if df.empty or len(df) < 100:
+        return {"bullish": False, "close": 0, "sma100": 0, "diff": 0}
 
-    sma50 = df["Close"].rolling(50).mean().iloc[-1]
+    # YOUR BACKTEST: SMA 100 for Nifty
+    sma100 = df["Close"].rolling(100).mean().iloc[-1]
     close = df["Close"].iloc[-1]
     return {
-        "bullish": close > sma50,
+        "bullish": close > sma100,
         "close": round(close, 2),
-        "sma50": round(sma50, 2),
-        "diff": round(close - sma50, 2),
+        "sma50": round(sma100, 2),  # keeping key name for compatibility
+        "sma100": round(sma100, 2),
+        "diff": round(close - sma100, 2),
     }
 
 
-# ═══════════════════ STOCK SCANNER ═══════════════════
+# ═══════════════════════════════════════════════════════
+# STOCK SCANNER — USES YOUR EXACT BUY CONDITIONS
+# ═══════════════════════════════════════════════════════
 
-def scan_stock(symbol: str) -> dict | None:
-    """Scan one stock using YOUR APP SCRIPT buy conditions."""
+def scan_stock(symbol: str):
     df = fetch_stock_data(symbol, period="6mo")
     if df.empty or len(df) < 55:
         return None
@@ -308,19 +287,19 @@ def scan_stock(symbol: str) -> dict | None:
     df = compute_indicators(df)
     latest = df.iloc[-1]
 
-    if pd.isna(latest.get("SMA50")) or pd.isna(latest.get("High_50D")):
+    if pd.isna(latest.get("Box_Top")) or pd.isna(latest.get("SMA_50")):
         return None
 
     return {
         "symbol": symbol,
         "close": round(latest["Close"], 2),
-        "sma50": round(latest["SMA50"], 2),
-        "high_50d": round(latest["High_50D"], 2),
-        "low_50d": round(latest["Low_50D"], 2),
+        "sma50": round(latest["SMA_50"], 2),
+        "high_50d": round(latest["Box_Top"], 2),
+        "low_50d": round(latest["Trailing_SL"], 2) if not pd.isna(latest.get("Trailing_SL")) else 0,
         "volume": int(latest["Volume"]),
-        "avg_vol": int(latest["Avg_Vol_20"]) if not pd.isna(latest["Avg_Vol_20"]) else 0,
+        "avg_vol": int(latest["Vol_SMA_20"]) if not pd.isna(latest.get("Vol_SMA_20")) else 0,
         "vol_ratio": round(latest["Vol_Ratio"], 2),
         "buy_signal": bool(latest["Buy_Signal"]),
-        "above_sma": latest["Close"] > latest["SMA50"],
-        "breakout": latest["Close"] > latest["High_50D"],
+        "above_sma": latest["Close"] > latest["SMA_50"],
+        "breakout": latest["Close"] > latest["Box_Top"] if not pd.isna(latest.get("Box_Top")) else False,
     }
